@@ -1,0 +1,110 @@
+---
+title: "EMLM Group 11 Assignment"
+author: "Hannah Cooney"
+date: "2026-03-09"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Mixed effects model handles the data best, as the longitudinal model has correlated data. 
+
+What we are testing for:
+The main effect of Visit/time -> does UPDRS scores get worse over time
+
+Age x Time interation -> does age affect the rate of progression
+
+Sex x Time interation -> do men and women progress differently
+
+Smoking status effect -> does smoking history matter?
+
+Random effects variance -> how much do patients vary from each other?
+
+```{r}
+library(nlme)
+```
+
+
+```{r}
+load("Group_11.RData")
+
+head(DF)
+str(DF)
+summary(DF)
+```
+
+```{r}
+# Fix sex and Smoting status as factors
+DF$sex <- factor(DF$sex, levels = c('male', 'female'), labels = c('Male', 'Female'))
+
+```
+
+
+Step 1: Beind the Full Fixed Effects Model
+
+```{r}
+model_full <- lme(UPDRS ~ Visit + Age + sex + smoking_status + Visit:Age + Visit:sex + Visit:smoking_status, 
+                  random = ~1 | id, 
+                  data = DF, 
+                  method = 'REML')
+summary(model_full)
+```
+
+
+# Questions to Answer
+
+Mean Structure: Does UPDRS tend to increase or decrease over time on average? Is the trend linear or non linear? 
+
+Variance Structure: Does the spread of UPDRS scores get larger or smaller over time?
+
+Correlation Structure: Are measurements taken close together in time more similar to eachother than measurements far apart?
+
+```{r}
+# Mean and SD of UPDRS at each visit
+tapply(DF$UPDRS, DF$Visit, mean)
+tapply(DF$UPDRS, DF$Visit, sd)
+```
+
+
+```{r}
+xyplot(UPDRS ~ Visit, data = DF,
+       xlab = "Visit", ylab = "Mean UPDRS Score",
+       main = "Mean UPDRS over time",
+       panel = function(x, y) {
+         panel.average(x, y, horizontal = FALSE, col = "pink", lwd = 2)
+       })
+```
+
+Mean Structure: The average UPDRS score increases steadily accross every visit, from 17.2 at visit 0 to 40 at visit 7. The increase looks roughly linear, which justifies using visit as a continuous predictor rather than a categorical one. 
+
+
+```{r}
+tapply(DF$UPDRS, DF$Visit, var)
+```
+
+```{r}
+library(lattice)
+xyplot(UPDRS ~ Visit, groups = id, data = DF,
+       type = "l", col = "skyblue",
+       xlab = "Visit", ylab = "UPDRS Score",
+       main = "Individual UPDRS profiles over time")
+```
+
+Variance Structure: The variance is 80 at visit 0 and 346 at visit 7. This fanning effect tells us that the patients start at different levels at baseline, and they diverge over time. The progress rate is varied between patients. To capture this, we need to use random slopes to model out data, not just random intercepts.
+
+
+```{r}
+# Reshape to wide format to compute correlations between visits
+library(reshape2)
+DF_wide <- dcast(DF, id ~ Visit, value.var = "UPDRS")
+cor(DF_wide[, -1], use = "pairwise.complete.obs")
+
+```
+
+The matrix above tells us that nearby visits correlate more strongly than distant ones. This calls for a decaying correlation structure, potentially a toeplitz structure (Maybe AR(1)).
+
+
