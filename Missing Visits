@@ -1,0 +1,139 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+install.packages(c("dplyr", "ggplot2", "lme4", "nlme", "survival", "JM"))
+library(dplyr)    # For data manipulation
+library(ggplot2)  # For plotting
+library(lme4)     # For Linear Mixed Models
+library(nlme)     # Alternative for Mixed Models (needed for JM)
+library(survival) # For dropout survival analysis
+library(JM)       # For Shared Parameter MNAR models (Slide 442)
+
+load("/Users/claradomning/Downloads/Group_11.RData")
+View(DF)
+str(DF)
+DF$sex <- as.factor(DF$sex)
+DF$smoking_status <- as.factor(DF$smoking_status)
+
+DF <- DF %>%
+arrange(id, Visit)
+
+#sequence of visits 
+patient_summary <- DF %>%
+group_by(id) %>%
+summarise(total_visits = n(),last_seen = max(Visit, na.rm = TRUE),
+#Classify missing data
+pattern = case_when(total_visits == 8 ~ "Completer", total_visits < (last_seen + 1) ~ "Intermittent", total_visits == (last_seen + 1) & last_seen < 7 ~ "Dropout"),
+
+dropped_out_binary = ifelse(total_visits < 8, 1, 0))    
+
+# Merge to main dataset
+DF <- left_join(DF, patient_summary, by = "id")
+#category
+table(patient_summary$pattern)
+
+#MAR?
+baseline_data <- DF %>%
+filter(Visit == 0)
+names(baseline_data)
+
+#AGE
+t.test(Age ~ pattern, data = baseline_data)
+
+#BASELINE UPDRS
+t.test(UPDRS ~ pattern, data = baseline_data)
+
+#SEX
+chisq.test(table(baseline_data$sex, baseline_data$pattern))
+
+# SMOKING
+chisq.test(table(baseline_data$smoking_status, baseline_data$pattern))
+```
+> View(DF)
+> str(DF)
+'data.frame':	2762 obs. of  6 variables:
+ $ id            : Factor w/ 500 levels "1","2","3","4",..: 1 1 1 1 1 1 1 2 2 2 ...
+ $ UPDRS         : num  17.1 27.7 69.1 62.7 68.4 ...
+ $ Visit         : num  0 1 3 4 5 6 7 0 3 6 ...
+ $ Age           : num  73.7 73.7 73.7 73.7 73.7 73.7 73.7 46.8 46.8 46.8 ...
+ $ sex           : Factor w/ 2 levels "male","female": 1 1 1 1 1 1 1 2 2 2 ...
+ $ smoking_status: int  2 2 2 2 2 2 2 0 0 0 ...
+> DF$sex <- as.factor(DF$sex)
+> DF$smoking_status <- as.factor(DF$smoking_status)
+> 
+> DF <- DF %>%
++ arrange(id, Visit)
+> 
+> #sequence of visits 
+> patient_summary <- DF %>%
++ group_by(id) %>%
++ summarise(total_visits = n(),last_seen = max(Visit, na.rm = TRUE),
++ #Classify missing data
++ pattern = case_when(total_visits == 8 ~ "Completer", total_visits < (last_seen + 1) ~ "Intermittent", total_visits == (last_seen + 1) & last_seen < 7 ~ "Dropout"),
++ 
++ dropped_out_binary = ifelse(total_visits < 8, 1, 0))    
+> 
+> # Merge to main dataset
+> DF <- left_join(DF, patient_summary, by = "id")
+> #category
+> table(patient_summary$pattern)
+
+     Dropout Intermittent 
+          39          461 
+> 
+> #MAR?
+> baseline_data <- DF %>%
++ filter(Visit == 0)
+> names(baseline_data)
+ [1] "id"                 "UPDRS"              "Visit"             
+ [4] "Age"                "sex"                "smoking_status"    
+ [7] "total_visits"       "last_seen"          "pattern"           
+[10] "dropped_out_binary"
+> 
+> #AGE
+> t.test(Age ~ pattern, data = baseline_data)
+
+	Welch Two Sample t-test
+
+data:  Age by pattern
+t = -1.4277, df = 45.356, p-value = 0.1602
+alternative hypothesis: true difference in means between group Dropout and group Intermittent is not equal to 0
+95 percent confidence interval:
+ -7.434981  1.265861
+sample estimates:
+     mean in group Dropout mean in group Intermittent 
+                  61.79744                   64.88200 
+
+> 
+> #BASELINE UPDRS
+> t.test(UPDRS ~ pattern, data = baseline_data)
+
+	Welch Two Sample t-test
+
+data:  UPDRS by pattern
+t = -0.77135, df = 51.536, p-value = 0.444
+alternative hypothesis: true difference in means between group Dropout and group Intermittent is not equal to 0
+95 percent confidence interval:
+ -3.129510  1.391872
+sample estimates:
+     mean in group Dropout mean in group Intermittent 
+                  16.43835                   17.30717 
+
+> 
+> #SEX
+> chisq.test(table(baseline_data$sex, baseline_data$pattern))
+
+	Pearson's Chi-squared test with Yates' continuity correction
+
+data:  table(baseline_data$sex, baseline_data$pattern)
+X-squared = 1.7799, df = 1, p-value = 0.1822
+
+> 
+> # SMOKING
+> chisq.test(table(baseline_data$smoking_status, baseline_data$pattern))
+
+	Pearson's Chi-squared test
+
+data:  table(baseline_data$smoking_status, baseline_data$pattern)
+X-squared = 0.21525, df = 2, p-value = 0.898
+
+> 
