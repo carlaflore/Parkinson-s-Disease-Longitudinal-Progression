@@ -1,0 +1,364 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+install.packages(c("dplyr", "ggplot2", "lme4", "nlme", "survival", "JM"))
+library(dplyr)    # For data manipulation
+library(ggplot2)  # For plotting
+library(lme4)     # For Linear Mixed Models
+library(nlme)     # Alternative for Mixed Models (needed for JM)
+library(survival) # For dropout survival analysis
+library(JM)       # For Shared Parameter MNAR models (Slide 442)
+
+load("/Users/claradomning/Downloads/Group_11.RData")
+View(DF)
+str(DF)
+DF$sex <- as.factor(DF$sex)
+DF$smoking_status <- as.factor(DF$smoking_status)
+
+DF <- DF %>%
+arrange(id, Visit)
+
+#sequence of visits 
+patient_summary <- DF %>%
+group_by(id) %>%
+summarise(total_visits = n(),last_seen = max(Visit, na.rm = TRUE),
+#Classify missing data
+pattern = case_when(total_visits == 8 ~ "Completer", total_visits < (last_seen + 1) ~ "Intermittent", total_visits == (last_seen + 1) & last_seen < 7 ~ "Dropout"),
+
+dropped_out_binary = ifelse(total_visits < 8, 1, 0))    
+
+# Merge to main dataset
+DF <- left_join(DF, patient_summary, by = "id")
+#category
+table(patient_summary$pattern)
+
+#MAR?
+baseline_data <- DF %>%
+filter(Visit == 0)
+names(baseline_data)
+
+#AGE
+t.test(Age ~ pattern, data = baseline_data)
+
+#BASELINE UPDRS
+t.test(UPDRS ~ pattern, data = baseline_data)
+
+#SEX
+chisq.test(table(baseline_data$sex, baseline_data$pattern))
+
+# SMOKING
+chisq.test(table(baseline_data$smoking_status, baseline_data$pattern))
+
+library(dplyr)
+#Summary Missing
+visit_summary <- DF %>%
+group_by(Visit) %>%
+summarise(patients_present = n()) %>% mutate( patients_missing = 500 - patients_present, percent_missing = round((patients_missing / 500) * 100, 1))
+visit_summary$more_than_5_percent <- ifelse(visit_summary$percent_missing > 5, "Yes", "No")
+# Print the table
+print(visit_summary)
+
+
+#ONLY Dropout 
+dropout_baseline <- DF %>%
+filter(pattern == "Dropout" & Visit == 0)
+
+#AGE 
+print("--- AGE OF DROPOUTS ---")
+summary(dropout_baseline$Age)
+
+#BASELINE UPDRS
+print("--- STARTING UPDRS OF DROPOUTS ---")
+summary(dropout_baseline$UPDRS)
+
+#SEX
+print("--- SEX OF DROPOUTS ---")
+table(dropout_baseline$sex)
+
+#SMOKING
+print("--- SMOKING STATUS OF DROPOUTS ---")
+table(dropout_baseline$smoking_status)
+
+#first score dropout 
+start_scores <- DF %>%
+filter(pattern == "Dropout" & Visit == 0) %>%
+dplyr::select(id, UPDRS_start = UPDRS)
+
+#last score individual 
+final_scores <- DF %>%
+filter(pattern == "Dropout" & Visit == last_seen & last_seen > 0) %>%
+dplyr::select(id, UPDRS_final = UPDRS)
+
+#trend t-test of both
+dropout_change <- inner_join(start_scores, final_scores, by = "id")
+t.test(dropout_change$UPDRS_final, dropout_change$UPDRS_start, paired = TRUE)
+
+library(dplyr)
+
+#Why dropout? other varaiables 
+baseline_data <- DF %>%
+filter(Visit == 0) %>%
+mutate(is_dropout = ifelse(pattern == "Dropout", 1, 0))
+
+#GLM
+dropout_model <- glm(is_dropout ~ Age + sex + smoking_status + UPDRS, 
+data = baseline_data, 
+family = "binomial")
+
+summary(dropout_model)
+
+library(ggplot2)
+library(dplyr)
+
+#only dropout
+dropout_data <- DF %>%
+filter(pattern == "Dropout")
+
+#Spaghetti Plot 
+ggplot(dropout_data, aes(x = Visit, y = UPDRS, group = id)) +
+#visits blue
+geom_line(color = "dodgerblue", alpha = 0.7, linewidth = 1) + 
+  
+#black dots for the actual visits 
+geom_point(color = "black", size = 2) +
+  
+theme_minimal() +
+labs(title = "Spaghetti Plot: UPDRS Dropouts",
+x = "Visit Number (0 to 7)",
+y = "UPDRS Score") +
+scale_x_continuous(breaks = 0:7)
+```
+> library(dplyr)    # For data manipulation
+> library(ggplot2)  # For plotting
+> library(lme4)     # For Linear Mixed Models
+> library(nlme)     # Alternative for Mixed Models (needed for JM)
+> library(survival) # For dropout survival analysis
+> library(JM)       # For Shared Parameter MNAR models (Slide 442)
+> 
+> load("/Users/claradomning/Downloads/Group_11.RData")
+> View(DF)
+> str(DF)
+'data.frame':	2762 obs. of  6 variables:
+ $ id            : Factor w/ 500 levels "1","2","3","4",..: 1 1 1 1 1 1 1 2 2 2 ...
+ $ UPDRS         : num  17.1 27.7 69.1 62.7 68.4 ...
+ $ Visit         : num  0 1 3 4 5 6 7 0 3 6 ...
+ $ Age           : num  73.7 73.7 73.7 73.7 73.7 73.7 73.7 46.8 46.8 46.8 ...
+ $ sex           : Factor w/ 2 levels "male","female": 1 1 1 1 1 1 1 2 2 2 ...
+ $ smoking_status: int  2 2 2 2 2 2 2 0 0 0 ...
+> DF$sex <- as.factor(DF$sex)
+> DF$smoking_status <- as.factor(DF$smoking_status)
+> 
+> DF <- DF %>%
++ arrange(id, Visit)
+> 
+> #sequence of visits 
+> patient_summary <- DF %>%
++ group_by(id) %>%
++ summarise(total_visits = n(),last_seen = max(Visit, na.rm = TRUE),
++ #Classify missing data
++ pattern = case_when(total_visits == 8 ~ "Completer", total_visits < (last_seen + 1) ~ "Intermittent", total_visits == (last_seen + 1) & last_seen < 7 ~ "Dropout"),
++ 
++ dropped_out_binary = ifelse(total_visits < 8, 1, 0))    
+> 
+> # Merge to main dataset
+> DF <- left_join(DF, patient_summary, by = "id")
+> #category
+> table(patient_summary$pattern)
+
+     Dropout Intermittent 
+          39          461 
+> 
+> #MAR?
+> baseline_data <- DF %>%
++ filter(Visit == 0)
+> names(baseline_data)
+ [1] "id"                 "UPDRS"              "Visit"             
+ [4] "Age"                "sex"                "smoking_status"    
+ [7] "total_visits"       "last_seen"          "pattern"           
+[10] "dropped_out_binary"
+> 
+> #AGE
+> t.test(Age ~ pattern, data = baseline_data)
+
+	Welch Two Sample t-test
+
+data:  Age by pattern
+t = -1.4277, df = 45.356, p-value = 0.1602
+alternative hypothesis: true difference in means between group Dropout and group Intermittent is not equal to 0
+95 percent confidence interval:
+ -7.434981  1.265861
+sample estimates:
+     mean in group Dropout mean in group Intermittent 
+                  61.79744                   64.88200 
+
+> 
+> #BASELINE UPDRS
+> t.test(UPDRS ~ pattern, data = baseline_data)
+
+	Welch Two Sample t-test
+
+data:  UPDRS by pattern
+t = -0.77135, df = 51.536, p-value = 0.444
+alternative hypothesis: true difference in means between group Dropout and group Intermittent is not equal to 0
+95 percent confidence interval:
+ -3.129510  1.391872
+sample estimates:
+     mean in group Dropout mean in group Intermittent 
+                  16.43835                   17.30717 
+
+> 
+> #SEX
+> chisq.test(table(baseline_data$sex, baseline_data$pattern))
+
+	Pearson's Chi-squared test with Yates' continuity correction
+
+data:  table(baseline_data$sex, baseline_data$pattern)
+X-squared = 1.7799, df = 1, p-value = 0.1822
+
+> 
+> # SMOKING
+> chisq.test(table(baseline_data$smoking_status, baseline_data$pattern))
+
+	Pearson's Chi-squared test
+
+data:  table(baseline_data$smoking_status, baseline_data$pattern)
+X-squared = 0.21525, df = 2, p-value = 0.898
+
+> 
+> library(dplyr)
+> #Summary Missing
+> visit_summary <- DF %>%
++ group_by(Visit) %>%
++ summarise(patients_present = n()) %>% mutate( patients_missing = 500 - patients_present, percent_missing = round((patients_missing / 500) * 100, 1))
+> visit_summary$more_than_5_percent <- ifelse(visit_summary$percent_missing > 5, "Yes", "No")
+> # Print the table
+> print(visit_summary)
+# A tibble: 8 × 5
+  Visit patients_present patients_missing percent_missing
+  <dbl>            <int>            <dbl>           <dbl>
+1     0              500                0             0  
+2     1              326              174            34.8
+3     2              303              197            39.4
+4     3              342              158            31.6
+5     4              327              173            34.6
+6     5              335              165            33  
+7     6              314              186            37.2
+8     7              315              185            37  
+# ℹ 1 more variable: more_than_5_percent <chr>
+> 
+> 
+> #ONLY Dropout 
+> dropout_baseline <- DF %>%
++ filter(pattern == "Dropout" & Visit == 0)
+> 
+> #AGE 
+> print("--- AGE OF DROPOUTS ---")
+[1] "--- AGE OF DROPOUTS ---"
+> summary(dropout_baseline$Age)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  42.20   49.35   62.20   61.80   72.30   86.30 
+> 
+> #BASELINE UPDRS
+> print("--- STARTING UPDRS OF DROPOUTS ---")
+[1] "--- STARTING UPDRS OF DROPOUTS ---"
+> summary(dropout_baseline$UPDRS)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  5.594  11.415  15.381  16.438  20.970  28.658 
+> 
+> #SEX
+> print("--- SEX OF DROPOUTS ---")
+[1] "--- SEX OF DROPOUTS ---"
+> table(dropout_baseline$sex)
+
+  male female 
+    24     15 
+> 
+> #SMOKING
+> print("--- SMOKING STATUS OF DROPOUTS ---")
+[1] "--- SMOKING STATUS OF DROPOUTS ---"
+> table(dropout_baseline$smoking_status)
+
+ 0  1  2 
+19 12  8 
+> 
+> #first score dropout 
+> start_scores <- DF %>%
++ filter(pattern == "Dropout" & Visit == 0) %>%
++ dplyr::select(id, UPDRS_start = UPDRS)
+> 
+> #last score individual 
+> final_scores <- DF %>%
++ filter(pattern == "Dropout" & Visit == last_seen & last_seen > 0) %>%
++ dplyr::select(id, UPDRS_final = UPDRS)
+> 
+> #trend t-test of both
+> dropout_change <- inner_join(start_scores, final_scores, by = "id")
+> t.test(dropout_change$UPDRS_final, dropout_change$UPDRS_start, paired = TRUE)
+
+	Paired t-test
+
+data:  dropout_change$UPDRS_final and dropout_change$UPDRS_start
+t = 3.7233, df = 38, p-value = 0.0006358
+alternative hypothesis: true mean difference is not equal to 0
+95 percent confidence interval:
+  3.74491 12.66991
+sample estimates:
+mean difference 
+       8.207408 
+
+> 
+> library(dplyr)
+> 
+> #Why dropout? other varaiables 
+> baseline_data <- DF %>%
++ filter(Visit == 0) %>%
++ mutate(is_dropout = ifelse(pattern == "Dropout", 1, 0))
+> 
+> #GLM
+> dropout_model <- glm(is_dropout ~ Age + sex + smoking_status + UPDRS, 
++ data = baseline_data, 
++ family = "binomial")
+> 
+> summary(dropout_model)
+
+Call:
+glm(formula = is_dropout ~ Age + sex + smoking_status + UPDRS, 
+    family = "binomial", data = baseline_data)
+
+Coefficients:
+                 Estimate Std. Error z value Pr(>|z|)
+(Intercept)     -1.143479   0.830489  -1.377    0.169
+Age             -0.017862   0.013477  -1.325    0.185
+sexfemale       -0.529563   0.343473  -1.542    0.123
+smoking_status1  0.199851   0.387154   0.516    0.606
+smoking_status2  0.097207   0.441273   0.220    0.826
+UPDRS           -0.002184   0.020576  -0.106    0.915
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 273.86  on 499  degrees of freedom
+Residual deviance: 269.24  on 494  degrees of freedom
+AIC: 281.24
+
+Number of Fisher Scoring iterations: 5
+
+> 
+> library(ggplot2)
+> library(dplyr)
+> 
+> #only dropout
+> dropout_data <- DF %>%
++ filter(pattern == "Dropout")
+> 
+> #Spaghetti Plot 
+> ggplot(dropout_data, aes(x = Visit, y = UPDRS, group = id)) +
++ #visits blue
++ geom_line(color = "dodgerblue", alpha = 0.7, linewidth = 1) + 
++   
++ #black dots for the actual visits 
++ geom_point(color = "black", size = 2) +
++   
++ theme_minimal() +
++ labs(title = "Spaghetti Plot: UPDRS Dropouts",
++ x = "Visit Number (0 to 7)",
++ y = "UPDRS Score") +
++ scale_x_continuous(breaks = 0:7)
