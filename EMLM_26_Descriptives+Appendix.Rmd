@@ -1,0 +1,407 @@
+---
+title: "EMLM_26_Descriptives"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(knitr::opts_chunk$set(
+  fig.align = "center",
+  fig.width = 6,
+  fig.height = 4
+))
+library(tidyverse)
+library(dplyr)
+library(knitr)
+library(reshape2) #melt function for corr heatmap
+library(lme4)
+
+load("Group_11.RData")
+```
+
+
+# Introduction
+
+
+# 1 Descriptive Statistics
+
+## 1.1 Summary Statistics for the Sample
+
+The study population consisted of 500 participants with a wide age range (41.1-88 years), although the median age was above 65 years, indicating an overall older cohort. The distribution of sex was balanced, with equal numbers of male and female participants. Smoking status was unevenly distributed across groups, with more than half of the participants classified as never smokers (52.2%), followed by former smokers (28.2%) and a smaller proportion of current smokers (19.6%). The relatively small size of the current smoker group may limit precision when comparing disease trajectories across smoking categories, which will be considered in the subsequent analysis.
+
+```{r descriptives table, echo=F}
+
+# Subject-level dataset
+DF_pat = DF %>%
+  distinct(id, .keep_all = TRUE)
+
+n_total = nrow(DF_pat)
+
+# --- Compute values ---
+age_min = min(DF_pat$Age, na.rm = TRUE)
+age_max = max(DF_pat$Age, na.rm = TRUE)
+age_mean = mean(DF_pat$Age, na.rm = TRUE)
+age_median = median(DF_pat$Age, na.rm = TRUE)
+age_sd = sd(DF_pat$Age, na.rm = TRUE)
+
+n_male = sum(DF_pat$sex == "male", na.rm = TRUE)
+n_female = sum(DF_pat$sex == "female", na.rm = TRUE)
+
+n_never = sum(DF_pat$smoking_status == 0, na.rm = TRUE)
+n_former = sum(DF_pat$smoking_status == 1, na.rm = TRUE)
+n_current = sum(DF_pat$smoking_status == 2, na.rm = TRUE)
+
+# --- Build table ---
+table1 = tibble(
+  Variable = c(
+    "Age (years), mean (SD)",
+    "Age (years), median",
+    "Age (years), min–max",
+    "Sex: Male, n (%)",
+    "Sex: Female, n (%)",
+    "Smoking status: Never (0), n (%)",
+    "Smoking status: Former (1), n (%)",
+    "Smoking status: Current (2), n (%)"
+  ),
+  Value = c(
+    paste0(round(age_mean, 2), " (", round(age_sd, 2), ")"),
+    round(age_median, 2),
+    paste0(age_min, " – ", age_max),
+    paste0(n_male, " (", round(100 * n_male / n_total, 1), "%)"),
+    paste0(n_female, " (", round(100 * n_female / n_total, 1), "%)"),
+    paste0(n_never, " (", round(100 * n_never / n_total, 1), "%)"),
+    paste0(n_former, " (", round(100 * n_former / n_total, 1), "%)"),
+    paste0(n_current, " (", round(100 * n_current / n_total, 1), "%)")
+  )
+)
+
+# --- Print table ---
+kable(
+  table1,
+  caption = "Descriptive Statistics",
+  align = c("l", "l")
+)
+```
+
+```{r UPDRS density, echo = F, out.width="50%", fig.align='center'}
+
+DF_baseline = DF %>% filter(Visit == 0)
+
+ggplot() +
+  geom_density(data = DF, aes(x = UPDRS, color = "Overall"), alpha = 0.4) +
+  geom_density(data = DF_baseline, aes(x = UPDRS, color = "Baseline"), linewidth = 1) +
+  labs(
+    title = "Distribution of UPDRS (overall and baseline)",
+    x = "UPDRS",
+    y = "Density",
+    color = "Group"
+  ) +
+  theme_minimal()
+
+#Age-Sex
+
+age_sex_summary = DF_pat %>%
+  group_by(sex) %>%
+  summarise(
+    n = n(),
+    mean = mean(Age, na.rm = TRUE),
+    median = median(Age, na.rm = TRUE),
+    sd = sd(Age, na.rm = TRUE),
+    Q1 = quantile(Age, 0.25, na.rm = TRUE),
+    Q3 = quantile(Age, 0.75, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+```
+
+Across all visits, UPDRS scores exhibited a right-skewed distribution, with most observations concentrated in the mild-to-moderate range and a long tail toward higher values. The median score was 22.73, with values ranging from 0.22 to 106.94, indicating a wide range of motor severity across the study period. At baseline, UPDRS scores were lower and less variable, with a median of 16.02 and a narrower range (0.23–51.85), suggesting that most patients entered the study with mild to moderate impairment. The baseline distribution also showed moderate variability at diagnosis and a mild right skew.
+
+The age distribution was broadly similar across sex groups, with comparable medians (65.2 years for males and 64.1 years for females) and overall variability. No substantial age differences in variability were observed across sex groups(see Appendix A). Similarly, age distributions were comparable across smoking groups, with substantial overlap between categories. Former smokers appeared slightly older on average, while current smokers were marginally younger; however, these differences were small (see Appendix B).
+
+## 1.2 Progression of Disease Severity (UPDRS)
+
+
+The relationship between age and UPDRS showed a weak positive association (r = 0.23), with substantial variability in UPDRS scores (SD = 16.28) across all ages. This suggests that age may play a role in disease severity and should be accounted for in the statistical analysis. In contrast, mean UPDRS trajectories over time were highly similar across sex groups, with no clear separation between males and females. Together, these findings do not indicate strong confounding by sex, while age may act as a potential confounder in the relationship between smoking status and disease progression.
+
+```{r Longitudinal Descriptives, echo=F, out.width="50%"}
+
+ggplot(DF, aes(x = Visit, y = UPDRS, group = id)) +
+  geom_line(alpha = 0.2) +
+  stat_summary(aes(group = 1), fun = mean, geom = "line", linewidth = 1.5, color = "red") +
+  labs(
+    title = "Individual UPDRS trajectories with mean trend",
+    x = "Visit",
+    y = "UPDRS"
+  ) +
+  theme_minimal()
+
+#UPDRS across visits by Smoking Status
+DF = DF %>%
+  mutate(
+    smoking_status = factor(smoking_status,
+      levels = c(0, 1, 2),
+      labels = c("Never", "Former", "Current")
+    )
+  )
+
+DF_summary = DF %>%
+  group_by(Visit, smoking_status) %>%
+  summarise(
+    mean_UPDRS = mean(UPDRS, na.rm = TRUE), #mean per smoking group
+    .groups = "drop"
+  )
+
+ggplot(DF_summary, aes(x = Visit, y = mean_UPDRS, color = smoking_status, group = smoking_status)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
+  labs(
+    title = "Mean UPDRS over time by smoking status",
+    x = "Visit",
+    y = "Mean UPDRS",
+    color = "Smoking status"
+  ) +
+  theme_minimal()
+
+#Correlation between age and disease severity
+cor_age_updrs = cor(DF$Age, DF$UPDRS, use = "complete.obs")
+
+#SD of disease severity
+sd_updrs = sd(DF$UPDRS, na.rm = TRUE)
+
+#Correlation structure over time
+
+DF_wide = DF %>%
+  select(id, Visit, UPDRS) %>%
+  pivot_wider(names_from = Visit, values_from = UPDRS)
+
+cor_visits = cor(DF_wide %>% select(-id), use = "pairwise.complete.obs")
+
+
+cor_long = melt(cor_visits)
+
+ggplot(cor_long, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() +
+  geom_text(aes(label = round(value, 2)), size = 3) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0.5) +
+  labs(
+    title = "Correlation of UPDRS across visits",
+    x = "Visit",
+    y = "Visit",
+    fill = "Correlation"
+  ) +
+  theme_minimal()
+
+```
+The longitudinal distribution of UPDRS scores indicates a clear increase in mean values over time, as illustrated in Figure ... reflecting progressive motor impairment. The increase in mean UPDRS over time appears approximately linear, with only minor deviations at later visits. Substantial variability is observed both within and between patients, as illustrated by the divergent individual trajectories around the overall mean trend. This indicates heterogeneity in disease progression across individuals, as well as within-subject fluctuations over time.
+
+The correlation matrix of UPDRS measurements across visits indicates moderate to strong positive correlations between repeated observations within individuals, confirming the presence of within-subject dependence. Correlations tend to be higher for visits closer in time and lower for more distant visits, although the pattern is not strictly monotonic. This suggests a temporally structured correlation, where measurements within the same individual are related over time. These findings motivate the use of mixed-effects models, which account for such correlation through subject-specific random effects, including both random intercepts and slopes.
+
+## Statistical Analysis
+
+```{r, final model}
+model_final = lmer(
+  UPDRS ~ Visit * smoking_status + Age + sex + (Visit | id),
+  data = DF,
+  REML = FALSE
+)
+
+summary(model_final)
+anova(model_final)
+```
+### Assumptions
+
+
+
+
+
+## Appendix
+
+
+####  Appendix A: Relationship between Age and Sex
+
+This plot describes the distribution of Age by Sex.
+
+```{r Sex and Age, out.width="50%"}
+ggplot(DF_pat, aes(x = sex, y = Age, fill = sex)) +
+  geom_boxplot(alpha = 0.6, outlier.shape = NA) +
+  geom_jitter(width = 0.15, alpha = 0.3) +
+  labs(
+    title = "Age distribution by sex",
+    x = "Sex",
+    y = "Age"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+```
+
+
+#### Appendix B: Relationship between Age and Smoking Status
+
+This plot describes the distribution of Age by Smoking Status.
+
+```{r Age distribution by smoking status, out.width="50%"}
+
+DF_pat = DF %>%
+  distinct(id, .keep_all = TRUE)
+
+ggplot(DF_pat, aes(x = smoking_status, y = Age, fill = smoking_status)) +
+  geom_boxplot(alpha = 0.6, outlier.shape = NA) +
+  geom_jitter(width = 0.15, alpha = 0.3) +
+  labs(
+    title = "Age distribution by smoking status",
+    x = "Smoking status",
+    y = "Age"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+#### Appendix C: Model specification, evaluation, and selection
+
+The model building strategy, started with `model_a`, and proceeded with `model_b`, and finally `model_c`. `model_a` tests a fuller fixed-effects structure by including both time-by-smoking and time-by-sex interactions, `model_b` assesses whether the time-by-sex interaction can be removed while retaining random slopes, and `model_c` evaluates whether the random slope for time is necessary at all. For valid model comparison, we fitted all models with maximum likelihood and `lmer()` from the `lme4` package, after which the final selected model can be refitted with REML.
+
+```{r, out.width= "50%"}
+
+# Fuller model: random intercept + random slope
+model_a <- lmer(
+  UPDRS ~ Visit * smoking_status + Visit * sex + Age + (Visit | id),
+  data = DF,
+  REML = FALSE
+)
+
+# Without Visit:sex interaction, still random intercept + slope
+model_b <- lmer(
+  UPDRS ~ Visit * smoking_status + Age + sex + (Visit | id),
+  data = DF,
+  REML = FALSE
+)
+
+# Same fixed effects as model_b, but random intercept only
+model_c <- lmer(
+  UPDRS ~ Visit * smoking_status + Age + sex + (1 | id),
+  data = DF,
+  REML = FALSE
+)
+
+anova(model_a, model_b)
+AIC(model_a, model_b)
+BIC(model_a, model_b)
+
+anova(model_c, model_b)
+AIC(model_c, model_b)
+BIC(model_c, model_b)
+```
+
+#### Appendix D: Model Diagnostics
+
+```{r, Model Diagnostics}
+
+# Setup for diagnostics
+diag_df <- DF %>%
+  mutate(
+    fitted_cond = fitted(model_final),              # conditional fitted values
+    resid_cond = resid(model_final),                # conditional/raw residuals
+    resid_cond_std = scale(resid_cond)[, 1]     # standardized version
+  )
+
+# Conditional Residuals Vs Fitted Values
+ggplot(diag_df, aes(x = fitted_cond, y = resid_cond_std)) +
+  geom_point(alpha = 0.35) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_smooth(method = "loess", se = FALSE) +
+  labs(
+    title = "Conditional standardized residuals vs fitted values",
+    x = "Conditional fitted values",
+    y = "Standardized residuals"
+  ) +
+  theme_minimal()
+
+# Conditional Residuals Vs Time by Smoking Group
+ggplot(diag_df, aes(x = Visit, y = resid_cond_std)) +
+  geom_point(alpha = 0.3, position = position_jitter(width = 0.1, height = 0)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_smooth(method = "loess", se = FALSE) +
+  facet_wrap(~ smoking_status) +
+  labs(
+    title = "Conditional standardized residuals vs Visit by smoking status",
+    x = "Visit",
+    y = "Standardized residuals"
+  ) +
+  theme_minimal()
+
+# Q-Q Plot of Conditional Residuals
+ggplot(diag_df, aes(sample = resid_cond_std)) +
+  stat_qq() +
+  stat_qq_line() +
+  labs(
+    title = "Q-Q plot of conditional standardized residuals",
+    x = "Theoretical quantiles",
+    y = "Sample quantiles"
+  ) +
+  theme_minimal()
+
+# Observed Vs Fitted Values
+ggplot(diag_df, aes(x = fitted_cond, y = UPDRS)) +
+  geom_point(alpha = 0.35) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  labs(
+    title = "Observed versus fitted values",
+    x = "Fitted values",
+    y = "Observed UPDRS"
+  ) +
+  theme_minimal()
+
+# Heteroscedasticity
+ggplot(diag_df, aes(x = fitted_cond, y = abs(resid_cond_std))) +
+  geom_point(alpha = 0.35) +
+  geom_smooth(method = "loess", se = FALSE) +
+  labs(
+    title = "Absolute conditional standardized residuals vs fitted values",
+    x = "Conditional fitted values",
+    y = "|Standardized residuals|"
+  ) +
+  theme_minimal()
+
+# Extract random Effects
+re <- ranef(model_final)$id
+re$id <- rownames(re)
+colnames(re)[1:2] <- c("b_intercept", "b_slope")
+
+# Histogram of random Intercepts
+ggplot(re, aes(x = b_intercept)) +
+  geom_histogram(bins = 30) +
+  labs(
+    title = "Histogram of random intercepts",
+    x = "Random intercept",
+    y = "Count"
+  ) +
+  theme_minimal()
+
+# Histogram of random Slopes
+ggplot(re, aes(x = b_slope)) +
+  geom_histogram(bins = 30) +
+  labs(
+    title = "Histogram of random slopes for Visit",
+    x = "Random slope",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+
+Several diagnostic plots were examined to assess the assumptions of the linear mixed-effects model.
+
+The residuals vs fitted values plot (to assess linearity and mean structure) shows a slight curvature in the LOESS line, suggesting mild non-linearity. While the deviation is not severe, it indicates that the linear effect of some predictors (possibly Visit or Age) may not fully capture the relationship with UPDRS. __maybe here we have to use a spline__
+
+The residuals vs Visit by smoking status plot (used to check time trends and interaction adequacy) shows generally centered residuals around zero across visits and smoking groups. However, small systematic deviations over time are visible, particularly a slight upward trend around mid visits, suggesting that the time effect may not be perfectly specified (e.g., potential non-linearity in Visit).
+
+The Q–Q plot of residuals (used to assess normality) shows clear deviation in the upper tail, with heavier-than-expected positive residuals. This indicates some departure from normality, likely due to a few large positive residuals (potential outliers or skewness in UPDRS). 
+
+The observed vs fitted values plot (used to assess overall model fit) shows that the model captures the general trend well, with points roughly aligned along the identity line. However, variability increases for larger fitted values, suggesting reduced predictive accuracy at higher UPDRS levels. __see below__
+
+The absolute residuals vs fitted values plot (used to assess homoscedasticity) indicates increasing spread in residuals as fitted values increase, followed by a slight decrease at the highest values. This suggests mild heteroscedasticity, with larger variability in mid-to-high fitted ranges. __we probably have to change the variance structure, for instance adding weights to allow variance to increase with fitted values, or (and it's easier, also use a spline, like ns()__
+
+The histogram of random intercepts (used to assess normality of random effects) appears approximately symmetric and bell-shaped, supporting the normality assumption for random intercepts, although a slight right tail is present. __this is fine__
+
+Similarly, the histogram of random slopes for Visit shows an approximately normal distribution with some right skew and a few extreme values, suggesting that while the normality assumption is broadly reasonable, there may be some influential subjects with atypical progression rates. __here we have to check outliers and influential points__
+
+_Overall, we see an upward trend that was already visible in the initial diagnostics, where we determined that there was a slight non-linearity. Additionally, we have to deal with non-normality and possible influential (or maybe not, if we can argument or transform - sometimes medical data can benefit of a log transformation, I've done it in the past) outliers._
