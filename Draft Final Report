@@ -253,8 +253,7 @@ The between-patient standard deviation of random intercepts is 5.32, which tells
 
 ### Assumptions
 
-
-
+Several diagnostic ploys were checked to test the assumptions of the linear mixed-effects model. The residuals vs fitted values plot shows residuals approximately centred around zero with minimal curvature, suggesting the mean structure is aqequately specified. Some residual heteroscedasticity remains in the mid range of fitted values, but this is substantially reduced compared to the model without variance weights, supporting the use of the exponential variance function. The Q-Q plot shows good agreement with normality across most of the distribution, with clear deviation in the upper tail, indicating some departure from normality likely due to a few large positive residuals. Given the large sample size this is not expected to substantially affect the fixed effects estimates, The histogram of random intercepts appears approximately bell-shaped and symmetric, supporting the normality assumption for the random effects.
 
 ## Appendix
 
