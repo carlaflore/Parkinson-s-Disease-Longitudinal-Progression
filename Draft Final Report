@@ -7,7 +7,7 @@ output: pdf_document
 ---
 
 
-```{r setup, include=FALSE}
+```{r setup, echo=F, include=FALSE}
 knitr::opts_chunk$set(knitr::opts_chunk$set(
   fig.align = "center",
   fig.width = 6,
@@ -257,12 +257,11 @@ Several diagnostic ploys were checked to test the assumptions of the linear mixe
 
 ## Appendix
 
-
 ####  Appendix A1: Relationship between Age and Sex
 
 This plot describes the distribution of Age by Sex.
 
-```{r Sex and Age, out.width="50%"}
+```{r Sex and Age, echo=F, out.width="50%"}
 ggplot(DF_pat, aes(x = sex, y = Age, fill = sex)) +
   geom_boxplot(alpha = 0.6, outlier.shape = NA) +
   geom_jitter(width = 0.15, alpha = 0.3) +
@@ -278,7 +277,7 @@ ggplot(DF_pat, aes(x = sex, y = Age, fill = sex)) +
 
 ### Appendix A2: Relationship between UPDSR and Age
 
-```{r, Overall relationship UPDSR and Age}
+```{r, echo=F, Overall relationship UPDSR and Age, out.width="50%"}
 
 ggplot(DF, aes(x = Age, y = UPDRS)) +
   geom_point(alpha = 0.3) +
@@ -296,7 +295,7 @@ ggplot(DF, aes(x = Age, y = UPDRS)) +
 #### Appendix A3: Relationship between UPDRS and Sex
 
 
-```{r, out.width="50%" }
+```{r, echo=F, out.width="50%" }
 ggplot(DF,
        aes(x = sex, y = UPDRS, fill = sex)) +
   geom_boxplot() +
@@ -325,7 +324,7 @@ ggplot(DF,
 
 This plot describes the distribution of Age by Smoking Status.
 
-```{r Age distribution by smoking status, out.width="50%"}
+```{r Age distribution by smoking status, echo=F, out.width="50%"}
 
 DF_pat = DF %>%
   distinct(id, .keep_all = TRUE)
@@ -348,7 +347,7 @@ ggplot(DF_pat, aes(x = smoking_status, y = Age, fill = smoking_status)) +
 
 We applied a systematic model building strategy, proceededing in a stepwise manner. We started from a base mixed-effects model with a linear time effect and constant residual variance. Given indications from the descriptive analysis of increasing variability over time, a variance function `(varExp)` was introduced to allow for heteroscedasticity. In parallel, potential non-linear effects of time were evaluated using both natural splines and a quadratic specification. Models were compared using likelihood ratio tests, AIC, and BIC. The inclusion of a variance structure led to a substantial improvement in model fit, while both spline-based and quadratic time effects improved fit relative to the linear specification. However, no meaningful difference was observed between spline and quadratic formulations, and the quadratic model was preferred based on parsimony. The final model therefore included a quadratic time effect, a time-dependent variance structure, and subject-specific random intercepts and slopes.
 
-```{r, out.width= "50%"}
+```{r, echo=F, out.width= "50%"}
 
 library(nlme)
 library(splines)
@@ -415,10 +414,7 @@ AIC(model1, model2, model3, model4, model5, model6)
 BIC(model1, model2, model3, model4, model5, model6)
 
 anova(model1, model2)
-anova(model1, model3)
-anova(model1, model5)
 anova(model2, model4)
-anova(model2, model6)
 anova(model4, model6)
 ```
 
