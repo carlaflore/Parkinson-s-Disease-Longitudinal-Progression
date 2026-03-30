@@ -1,0 +1,184 @@
+---
+title: "Mixed and Longitudinal Models Group 11 final document"
+author: 'Group 11: Hannah Cooney, Carla Flore, Clara Domning'
+date: "March 2026"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(GGally)
+library(lme4)
+#library(lmerTest)
+library(dplyr)
+library(broom)
+library(ggplot2)
+library(nlme)
+library(survival)
+#library(JM)
+library(lattice)
+library(reshape2)
+```
+
+
+```{r}
+load("Group_11.RData")
+DF$sex <- factor(DF$sex, levels = c("male", "female"), 
+                 labels = c("Male", "Female"))
+
+DF$smoking_status <- factor(DF$smoking_status, levels = c(0, 1, 2),
+                             labels = c("Never", "Former", "Current"))
+```
+
+**# Declaration**
+
+We declare that all students in the group have contributed sufficiently to the study and that the work is original and not copied from elsewhere.
+
+Signed:
+
+
+
+\newpage
+
+**#Introduction** (10-15 lines)
+
+The aim of our analysis is to understand the evolution of motor symptom  severity over time in patients diagnosed with Parkinson's Disease, and the influence of patient characteristics such as sex, age at diagnosis, and specific lifestyle factors on this evolution. In this study, Unified Parkinson's Disease Rating Scale (UPDRS) Part III is used to quantify motor symptom severity. This score ranges from 0 to 108, where the higher value indicates a more severe motor impairment. 
+
+500 diagnosed patients were enrolled in the study between 1995 and 2011. Assessments were conducted on patients at baseline, and then annually for 7 consecutive years. Several variables were recorded for each patient, including dates of each UPDRS assessment, the corresponding UPDRS Part III score at each visit, gender, and age of the patient when diagnosed. Their smoking history was documented at baseline. Our focus in this report is on the influence of smoking status on the disease trajectory.
+
+A challenge often encountered in observational studies is the presence of missing data. This can be due to factors such as patient withdrawal, relocation, or inability to perform assessments as the disease progresses. We have also analysed the pattern of the missing data, and assessed whether the Missing At Random (MAR) assumption is reasonable in our case.
+
+The structure of our report is as follows:
+
+Section 2 presents a descriptive analysis of the data; Section 3 presents the statistical analysis, including the final model and analysis results; The Appendix details the procedure and the statistical techniques we have used when selecting our final model, and how we have dealt with missing data.
+
+**#Descriptive Analysis**  (1-2 pages)
+
+##2.1 Sample Characteristics
+```{r, echo=FALSE}
+#Patient-level dataset (Age/sex/smoking_status repeat across visits in long format)
+DF_pat <- DF %>%
+  distinct(id, .keep_all = TRUE) %>%
+  select(id, sex, Age, smoking_status)
+```
+
+###Age Distribution
+```{r, echo=FALSE}
+age_stats <- DF_pat %>%
+  summarise(
+    n = sum(!is.na(Age)), 
+    Missing = sum(is.na(Age)),
+    Mean = mean(Age ,na.rm = TRUE),
+    SD = sd(Age, na.rm = TRUE),
+    Median = median(Age, na.rm = TRUE),
+    Q1 = quantile(Age, 0.25, na.rm = TRUE),
+    Q3 = quantile(Age, 0.75, na.rm = TRUE),
+    IQR = IQR(Age, na.rm = TRUE),
+    Min = min(Age, na.rm = TRUE), 
+    Max = max(Age, na.rm = TRUE)) 
+age_stats
+```
+
+The dataset has patients with baseline ages ranging from 41.1 years to 88 years, and no implausible values were observed. Overall, the age distribution reflects a typical Parkinson's disease cohort, with most patients diagnosed in their 50s to 70s and a moderate spread across older age groups.
+
+###Sex Distribution
+```{r, echo=FALSE}
+sex_tab <- DF_pat %>%
+  count(sex, name = "n") %>%
+  mutate(prop = n / sum(n))
+sex_tab
+```
+
+The dataset contains a balanced sample of male and female patients.
+
+###Smoking Distribution
+```{r, echo=FALSE}
+smoke_tab <- DF_pat %>%
+  count(smoking_status, name = "n") %>%
+  mutate(Percentage = round(100 * n / sum(n), 1))
+smoke_tab
+```
+
+The majority of patients included in the dataset have never been smokers, slightly less than one third are former smokers, and approximately 20% are current smokers.
+
+###Missing Data
+
+At baseline, all 500 patients were observed. At subsequent visits, observation counts ranged from 303 to 342, reflecting intermittent missingness over the follow-up period.
+
+## 2.2 Longitudinal Outcome
+
+In order to explore the longitudinal behaviour of UPDRS scores, we examined the mean structure, the variance structure, and the correlation structure over time.
+
+###Mean Structure:
+```{r, echo=FALSE}
+mean_updrs <- tapply(DF$UPDRS, DF$Visit, mean)
+#tapply(DF$UPDRS, DF$Visit, sd)
+#tapply(DF$UPDRS, DF$Visit, var)
+
+xyplot(UPDRS ~ Visit, data = DF,
+       xlab = "Visit", ylab = "Mean UPDRS Score",
+       main = "Mean UPDRS over time",
+       scales = list(y=list(limits = c(15,45))),
+       panel = function(x, y) {
+         panel.average(x, y, horizontal = FALSE, 
+                       col = "steelblue", lwd = 2)
+       })
+```
+The mean UPDRS Part III score increases steadily across follow-up visits, indicating a clear progression of motor symptom severity over time.The mean UPDRS score increases from 17.24 at baseline to 39.99 at Visit 7.
+The trajectory appears approximately linear, although the slope increases slightly in later follow-up visits. This may indicate a slight acceleration of symptom progression overtime. 
+
+###Variance Structure:
+```{r, echo=FALSE}
+xyplot(UPDRS ~ Visit, groups = id, data = DF,
+       type = "l", col = "lightblue",
+       xlab = "Visit", ylab = "UPDRS Score",
+       main = "Individual UPDRS profiles over time",
+       panel = function(x, y, ...) {
+         panel.xyplot(x, y, ...)
+         panel.average(x, y, horizontal = FALSE, 
+                       col = "steelblue", lwd = 3)
+       })
+```
+
+The spaghetti plot displays the longitudinal UPDRS trajectories for all patients over the 7-year follow-up period. Each light blue line represents the repeated measurements of a single patient, while the darker blue line corresponds to the average trajectory across all patients.
+
+Overall, the average UPDRS score increases steadily over time, indicating a clear worsening of motor symptoms as the disease progresses. However, the individual trajectories reveal substantial heterogeneity between patients. In addition to the differences at baseline, patients also appear to differ in their rates of progression, suggesting that patients not only start at different levels of motor impairment, but may also deteriorate at different rates. 
+
+
+###Smoking and disease progression
+(Insert graph)
+At baseline, the mean UPDRS scores are relatively similar across the three groups. These small differences suggest that baseline motor symptom severity does not differ substantially by smoking status.
+
+Over time, the trajectories for the three smoking groups are not perfectly parallel; former smokers show a steeper increase in later visits, while never smokers and current smokers show a more gradual progression. This lack of parallelism suggest the possible presence of an interaction between time and smoking status, meaning the effect of smoking status on UPDRS may change over time.
+
+
+**##Statistical Analysis** (2-3 pages)
+
+A linear mixed effects model was fitted to examine how the mean UPDRS scores evolve over time, and how this evolution is influenced by smoking status, while also accounting for age and sex. The mean structure includes Visit, a quadratic term for Visit to account for the observed acceleration over time, smoking status, the interaction between Visit and smoking status, age, and sex as fixed effects. To account for between-patient variability in both the severity at baseline and progression rates, random intercepts and slopes for Visit were included. To address the exceleration of residuals over time, an exponential variance function was applied. The error terms are assumed to be normally distributed, and independent of the random effects.
+
+```{r, echo=FALSE}
+final_model <- lme(UPDRS ~ Visit + I(Visit^2) + smoking_status + 
+                          Visit:smoking_status + Age + sex,
+                        random = ~Visit | id,
+                        data = DF,
+                        method = "REML",
+                        na.action = na.exclude,
+                        weights = varExp(form = ~Visit))
+
+summary(final_model)
+intervals(final_model, which = "fixed")
+```
+
+*Visit:* At baseline, the average UPDRS scores increase by 1.47 points per visit (95% CI [0.89,2.05]). This indicates a statistically significant worsening of motor symptoms over time. The positive quadratic term (0.23, 95% CI [0.15, 0.31]) indicates that this rate of increase accelerates over time, consistent with the slight steepening observed in our descriptive analysis. 
+
+*Age:* On average, UPDRS scores increase by 0.25 per a one year increase in the age of the participant at baseline (95% CI[0.20,0.30]). This indicates that older patients at diagnosis have significantly higher UPDRS scores on average.
+
+*Sex:* Females have on average 0.21 points higher UPDRS scores than males (95% CI[-1.15,1.56]). There is no statistically significant difference in UPDRS scores between males and females after accounting for our other variables.
+
+*Smoking Status and Visit:Smoking status:* There is no evidence that smoking history significantly influences either baseline motor symptom severity or the rate of progression over time (Former vs Never baseline: 95% CI [-0.79,2.46]; Current vs Never baseline: 95% CI [-1.40,2.28]; Former progression rate:95% CI [-0.29,0.76]; Current progression rate: 95% CI [-0.64, 0.55]). 
+
+The between-patient standard deviation of random intercepts is 5.32, which tells us that patients differ substantially in their UPDRS levels at baseline. The between-patient standard deviation of random slopes is 1.82, which tells us that patients also differ in their rate of progression over time.
+
+**##Appendix** (2-3 pages)
