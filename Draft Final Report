@@ -24,7 +24,7 @@ library(splines)
 load("Group_11.RData")
 ```
 
-__Declaration: We declare that all students in the group have contributed sufficiently to the study and that the work is original and non copied from elsewhere.__
+__Declaration: We declare that all students in the group have contributed sufficiently to the study and that the work is original and not copied from elsewhere.__
 
 # Introduction
 
@@ -220,6 +220,10 @@ The correlation matrix of UPDRS measurements across visits indicates moderate to
 
 ## Statistical Analysis
 
+A linear mixed effects model was fitted to examine how the mean UPDRS scores evolve over time and how this evolution is influenced by smoking status, while also accounting for age and sex. The mean structure includes Visit, a quadratic term for Visit to account for the observed acceleration over time, smoking status, the interaction between Visit and smoking status, age, and sex as fixed effects. To account for between-patient variability in both the severity at baseline and progression rates, random intercepts and slopes for Visit were included. To address the acceleration of residuals over time, an exponential variance function was applied. The error terms are assumed to be normally distributed and independent of the random effects. 
+
+The missing data is assumed to be missing at random, which allows yielding unbiased estimations.
+
 ```{r, final model}
 model_final <- lme(
   UPDRS ~ Visit + I(Visit^2) + smoking_status + Visit:smoking_status + Age + sex,
@@ -230,8 +234,24 @@ model_final <- lme(
   weights = varExp(form = ~ Visit)
 )
 ```
-### Assumptions
+The results of the model using Restricted Maximum Likelihood (REML) showed that there is a significant increase in motor symptom severity (p < 0.001). 
 
+*Visit*
+At baseline, the average UPDRS scores increase by 1.47 points per visit (95% CI [0.89,2.05]). This indicates a statistically significant worsening of motor symptoms over time. The positive quadratic term (0.23, 95% CI [0.15, 0.31]) indicates that this rate of increase accelerates over time, consistent with the slight steepening observed in our descriptive analysis. 
+
+*Age*
+On average, UPDRS scores increase by 0.25 per a one-year increase in the age of the participant at baseline (95% CI[0.20,0.30]). This indicates that older patients at diagnosis have significantly higher UPDRS scores on average. 
+
+*Sex*
+Females have, on average, 0.21 points higher UPDRS scores than males (95% CI[- 1.15,1.56]). There is no statistically significant difference in UPDRS scores between males and females after accounting for our other variables. 
+
+*Smoking*
+There is no evidence that smoking history significantly influences either baseline motor symptom severity or the rate of progression over time (Former vs Never baseline: 95% CI [-0.79,2.46]; Current vs Never baseline: 95% CI [-1.40,2.28]; Former progression rate: 95% CI [-0.29,0.76]; Current progression rate: 95% CI [-0.64, 0.55]).
+
+*Heterogeneity*
+The between-patient standard deviation of random intercepts is 5.32, which tells us that patients differ substantially in their UPDRS levels at baseline. The between-patient standard deviation of random slopes is 1.82, which tells us that patients also differ in their rate of progression over time.
+
+### Assumptions
 
 
 
